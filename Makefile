@@ -3,14 +3,15 @@
 #
 CC     = gcc
 CFLAGS = -Wall -Wextra -I.
+THREADFLAGS = -pthread
 
 MUL    ?= karatsuba
 MODMUL ?= base
 RSA    ?= crt
 
-MUL_IMPLS    = base karatsuba
-MODMUL_IMPLS = base montgomery
-RSA_IMPLS    = base square_multiply crt
+MUL_IMPLS    = base base_mt karatsuba karatsuba_mt
+MODMUL_IMPLS = base montgomery montgomery_mt
+RSA_IMPLS    = base square_multiply crt crt_mt
 
 #
 # Project files
@@ -53,11 +54,11 @@ debug: check-modules prep $(DBGEXE)
 
 $(DBGEXE): $(DBGOBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(DBGCFLAGS) -o $(DBGEXE) $^
+	$(CC) $(CFLAGS) $(DBGCFLAGS) $(THREADFLAGS) -o $(DBGEXE) $^
 
 $(DBGDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) -c $(CFLAGS) $(DBGCFLAGS) -o $@ $<
+	$(CC) -c $(CFLAGS) $(DBGCFLAGS) $(THREADFLAGS) -o $@ $<
 
 #
 # Release rules
@@ -66,11 +67,11 @@ release: check-modules prep $(RELEXE)
 
 $(RELEXE): $(RELOBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(RELCFLAGS) -o $(RELEXE) $^
+	$(CC) $(CFLAGS) $(RELCFLAGS) $(THREADFLAGS) -o $(RELEXE) $^
 
 $(RELDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) -c $(CFLAGS) $(RELCFLAGS) -o $@ $<
+	$(CC) -c $(CFLAGS) $(RELCFLAGS) $(THREADFLAGS) -o $@ $<
 
 #
 # Other rules
