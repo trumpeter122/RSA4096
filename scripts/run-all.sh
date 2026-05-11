@@ -11,10 +11,17 @@ for mul in $MUL_IMPLS; do
   for modmul in $MODMUL_IMPLS; do
     for rsa in $RSA_IMPLS; do
       name="mul-${mul}_modmul-${modmul}_rsa-${rsa}"
+      log="out/${name}.log"
+
+      if [ -f "$log" ]; then
+        echo "==> $name exists, skipping"
+        continue
+      fi
+
       echo "==> $name"
       make clean >/dev/null
       make MUL="$mul" MODMUL="$modmul" RSA="$rsa" >/dev/null
-      ./release/main >"out/${name}.log" 2>&1
+      ./release/main >"$log" 2>&1
     done
   done
 done
