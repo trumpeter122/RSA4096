@@ -6,9 +6,11 @@ Description : 整理数据
 *****************************************************************************/
 #include <string.h>
 #include "bignum.h"
+#include "mul/mul.h"
+#include "modmul/modmul.h"
+#include "rsa/compute.h"
 
 static bn_t bn_sub_digit_mul(bn_t *a, bn_t *b, bn_t c, bn_t *d, uint32_t digits);
-static bn_t bn_add_digit_mul(bn_t *a, bn_t *b, bn_t c, bn_t *d, uint32_t digits);
 static uint32_t bn_digit_bits(bn_t a);
 
 void bn_decode(bn_t *bn, uint32_t digits, uint8_t *hexarr, uint32_t size)
@@ -105,21 +107,7 @@ bn_t bn_sub(bn_t *a, bn_t *b, bn_t *c, uint32_t digits)
 
 void bn_mul(bn_t *a, bn_t *b, bn_t *c, uint32_t digits)
 {
-    bn_t t[2*BN_MAX_DIGITS];
-    uint32_t bdigits, cdigits, i;
-
-    bn_assign_zero(t, 2*digits);
-    bdigits = bn_digits(b, digits);
-    cdigits = bn_digits(c, digits);
-
-    for(i=0; i<bdigits; i++) {
-        t[i+cdigits] += bn_add_digit_mul(&t[i], &t[i], b[i], c, cdigits);
-    }
-
-    bn_assign(a, t, 2*digits);
-
-    // Clear potentially sensitive information
-    memset((uint8_t *)t, 0, sizeof(t));
+    mul_bn_mul(a, b, c, digits);
 }
 
 void bn_div(bn_t *a, bn_t *b, bn_t *c, uint32_t cdigits, bn_t *d, uint32_t ddigits)
@@ -220,57 +208,14 @@ void bn_mod(bn_t *a, bn_t *b, uint32_t bdigits, bn_t *c, uint32_t cdigits)
 
 void bn_mod_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *d, uint32_t digits)
 {
-    bn_t t[2*BN_MAX_DIGITS];
-
-    bn_mul(t, b, c, digits);
-    bn_mod(a, t, 2*digits, d, digits);
-
-    // Clear potentially sensitive information
-    memset((uint8_t *)t, 0, sizeof(t));
+    modmul_bn_mod_mul(a, b, c, d, digits);
 }
 
 
 
 void bn_mod_exp(bn_t *a, bn_t *b, bn_t *c, uint32_t cdigits, bn_t *d, uint32_t ddigits)
 {
-    bn_t bpower[3][BN_MAX_DIGITS], ci, t[BN_MAX_DIGITS];
-    int i;
-    uint32_t ci_bits, j, s;
-
-    bn_assign(bpower[0], b, ddigits);
-    bn_mod_mul(bpower[1], bpower[0], b, d, ddigits);
-    bn_mod_mul(bpower[2], bpower[1], b, d, ddigits);
-
-    BN_ASSIGN_DIGIT(t, 1, ddigits);
-
-    cdigits = bn_digits(c, cdigits);
-    i = cdigits - 1;
-    for(; i>=0; i--) {
-        ci = c[i];
-        ci_bits = BN_DIGIT_BITS;
-
-        if(i == (int)(cdigits - 1)) {
-            while(!DIGIT_2MSB(ci)) {
-                ci <<= 2;
-                ci_bits -= 2;
-            }
-        }
-
-        for(j=0; j<ci_bits; j+=2) {
-            bn_mod_mul(t, t, t, d, ddigits);
-            bn_mod_mul(t, t, t, d, ddigits);
-            if((s = DIGIT_2MSB(ci)) != 0) {
-                bn_mod_mul(t, t, bpower[s-1], d, ddigits);
-            }
-            ci <<= 2;
-        }
-    }
-
-    bn_assign(a, t, ddigits);
-
-    // Clear potentially sensitive information
-    memset((uint8_t *)bpower, 0, sizeof(bpower));
-    memset((uint8_t *)t, 0, sizeof(t));
+    rsa_bn_mod_exp(a, b, c, cdigits, d, ddigits);
 }
 
 int bn_cmp(bn_t *a, bn_t *b, uint32_t digits)
@@ -292,34 +237,6 @@ uint32_t bn_digits(bn_t *a, uint32_t digits)
     }
 
     return (i + 1);
-}
-
-static bn_t bn_add_digit_mul(bn_t *a, bn_t *b, bn_t c, bn_t *d, uint32_t digits)
-{
-    dbn_t result;
-    bn_t carry, rh, rl;
-    uint32_t i;
-
-    if(c == 0)
-        return 0;
-
-    carry = 0;
-    for(i=0; i<digits; i++) {
-        result = (dbn_t)c * d[i];
-        rl = result & BN_MAX_DIGIT;
-        rh = (result >> BN_DIGIT_BITS) & BN_MAX_DIGIT;
-        if((a[i] = b[i] + carry) < carry) {
-            carry = 1;
-        } else {
-            carry = 0;
-        }
-        if((a[i] += rl) < rl) {
-            carry++;
-        }
-        carry += rh;
-    }
-
-    return carry;
 }
 
 static bn_t bn_sub_digit_mul(bn_t *a, bn_t *b, bn_t c, bn_t *d, uint32_t digits)

@@ -2,13 +2,21 @@
 # Compiler flags
 #
 CC     = gcc
-CFLAGS = -Wall -Wextra 
+CFLAGS = -Wall -Wextra -I.
+
+MUL    ?= karatsuba
+MODMUL ?= base
+RSA    ?= crt
+
+MUL_IMPLS    = base karatsuba
+MODMUL_IMPLS = base montgomery
+RSA_IMPLS    = base square_multiply crt
 
 #
 # Project files
 #
 
-SRCS = main.c rsa.c bignum.c
+SRCS = main.c rsa.c bignum.c mul/$(MUL).c modmul/$(MODMUL).c rsa/$(RSA).c
 OBJS = $(SRCS:.c=.o)
 EXE  = main
 
@@ -28,31 +36,40 @@ RELEXE = $(RELDIR)/$(EXE)
 RELOBJS = $(addprefix $(RELDIR)/, $(OBJS))
 RELCFLAGS = -O3 -DNDEBUG
 
-.PHONY: all clean debug prep release remake
+.PHONY: all check-modules clean debug prep release remake
 
 # Default build
-all: prep release
+all: check-modules prep release
+
+check-modules:
+	@test -f mul/$(MUL).c || (echo "Unknown MUL implementation: $(MUL)"; exit 1)
+	@test -f modmul/$(MODMUL).c || (echo "Unknown MODMUL implementation: $(MODMUL)"; exit 1)
+	@test -f rsa/$(RSA).c || (echo "Unknown RSA implementation: $(RSA)"; exit 1)
 
 #
 # Debug rules
 #
-debug: $(DBGEXE)
+debug: check-modules prep $(DBGEXE)
 
 $(DBGEXE): $(DBGOBJS)
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(DBGCFLAGS) -o $(DBGEXE) $^
 
 $(DBGDIR)/%.o: %.c
+	@mkdir -p $(dir $@)
 	$(CC) -c $(CFLAGS) $(DBGCFLAGS) -o $@ $<
 
 #
 # Release rules
 #
-release: $(RELEXE)
+release: check-modules prep $(RELEXE)
 
 $(RELEXE): $(RELOBJS)
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(RELCFLAGS) -o $(RELEXE) $^
 
 $(RELDIR)/%.o: %.c
+	@mkdir -p $(dir $@)
 	$(CC) -c $(CFLAGS) $(RELCFLAGS) -o $@ $<
 
 #
@@ -64,4 +81,6 @@ prep:
 remake: clean all
 
 clean:
-	rm -f $(RELEXE) $(RELOBJS) $(DBGEXE) $(DBGOBJS)
+	rm -f $(RELEXE) $(DBGEXE) \
+		$(RELDIR)/*.o $(RELDIR)/mul/*.o $(RELDIR)/modmul/*.o $(RELDIR)/rsa/*.o \
+		$(DBGDIR)/*.o $(DBGDIR)/mul/*.o $(DBGDIR)/modmul/*.o $(DBGDIR)/rsa/*.o

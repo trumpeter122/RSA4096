@@ -11,6 +11,7 @@ Description :
 
 #include "rsa.h"
 #include "bignum.h"
+#include "rsa/compute.h"
 
 static int private_block_operation(uint8_t *out, uint32_t *out_len, uint8_t *in, uint32_t in_len, rsa_sk_t *sk);
 
@@ -145,28 +146,25 @@ int rsa_private_decrypt(uint8_t *out, uint32_t *out_len, uint8_t *in, uint32_t i
 
 static int private_block_operation(uint8_t *out, uint32_t *out_len, uint8_t *in, uint32_t in_len, rsa_sk_t *sk)
 {
-    uint32_t ndigits, ddigits;
-    bn_t c[BN_MAX_DIGITS], d[BN_MAX_DIGITS], m[BN_MAX_DIGITS], n[BN_MAX_DIGITS];
+    uint32_t ndigits;
+    bn_t c[BN_MAX_DIGITS], m[BN_MAX_DIGITS], n[BN_MAX_DIGITS];
 
     bn_decode(c, BN_MAX_DIGITS, in, in_len);
     bn_decode(n, BN_MAX_DIGITS, sk->modulus, RSA_MAX_MODULUS_LEN);
-    bn_decode(d, BN_MAX_DIGITS, sk->exponent, RSA_MAX_MODULUS_LEN);
 
     ndigits = bn_digits(n, BN_MAX_DIGITS);
-    ddigits = bn_digits(d, BN_MAX_DIGITS);
 
     if(bn_cmp(c, n, ndigits) >= 0)
         return ERR_WRONG_DATA;
 
-    // Directly compute m = c^d mod n (brute-force implementation, without CRT acceleration)
-    bn_mod_exp(m, c, d, ddigits, n, ndigits);
+    if(rsa_private_compute(m, c, sk, n, ndigits) != 0)
+        return ERR_WRONG_DATA;
 
     *out_len = (sk->bits + 7) / 8;
     bn_encode(out, *out_len, m, ndigits);
 
     // Clear potentially sensitive information
     memset((uint8_t *)c, 0, sizeof(c));
-    memset((uint8_t *)d, 0, sizeof(d));
     memset((uint8_t *)m, 0, sizeof(m));
 
     return 0;
@@ -279,21 +277,20 @@ int rsa_public_encrypt(uint8_t *out, uint32_t *out_len, uint8_t *in, uint32_t in
 
 static int public_block_operation(uint8_t *out, uint32_t *out_len, uint8_t *in, uint32_t in_len, rsa_pk_t *pk)
 {
-    uint32_t edigits, ndigits;
-    bn_t c[BN_MAX_DIGITS], e[BN_MAX_DIGITS], m[BN_MAX_DIGITS], n[BN_MAX_DIGITS];
+    uint32_t ndigits;
+    bn_t c[BN_MAX_DIGITS], m[BN_MAX_DIGITS], n[BN_MAX_DIGITS];
 
     bn_decode(m, BN_MAX_DIGITS, in, in_len);
     bn_decode(n, BN_MAX_DIGITS, pk->modulus, RSA_MAX_MODULUS_LEN);
-    bn_decode(e, BN_MAX_DIGITS, pk->exponent, RSA_MAX_MODULUS_LEN);
 
     ndigits = bn_digits(n, BN_MAX_DIGITS);
-    edigits = bn_digits(e, BN_MAX_DIGITS);
 
     if(bn_cmp(m, n, ndigits) >= 0) {
         return ERR_WRONG_DATA;
     }
 
-    bn_mod_exp(c, m, e, edigits, n, ndigits);
+    if(rsa_public_compute(c, m, pk, n, ndigits) != 0)
+        return ERR_WRONG_DATA;
 
     *out_len = (pk->bits + 7) / 8;
     bn_encode(out, *out_len, c, ndigits);
@@ -304,4 +301,3 @@ static int public_block_operation(uint8_t *out, uint32_t *out_len, uint8_t *in, 
 
     return 0;
 }
-
