@@ -3,7 +3,7 @@ set -eu
 
 MUL_IMPLS="base base_mt karatsuba karatsuba_mt"
 MODMUL_IMPLS="base montgomery montgomery_mt"
-RSA_IMPLS="base square_multiply crt crt_mt"
+RSA_IMPLS="base square_multiply crt crt_mt mont_crt"
 
 mkdir -p out
 
