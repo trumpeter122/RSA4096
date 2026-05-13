@@ -25,6 +25,9 @@ static bn_t montgomery_n0inv(bn_t n0);
 static uint32_t exponent_bit(bn_t *a, uint32_t bit);
 static uint32_t highest_bit_index(bn_t *a, uint32_t digits);
 static void montgomery_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, bn_t n0inv);
+static void montgomery_mul_64(bn_t *a, bn_t *b, bn_t *c, bn_t *n, bn_t n0inv);
+static void montgomery_mul_128(bn_t *a, bn_t *b, bn_t *c, bn_t *n, bn_t n0inv);
+static void montgomery_mul_var(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, bn_t n0inv);
 static void montgomery_precompute_constants(bn_t *r, bn_t *rr, bn_t *n, uint32_t digits);
 static void montgomery_mod_mul_precomp(bn_t *a, bn_t *b, bn_t *c, bn_t *n,
                                        uint32_t digits, bn_t n0inv, bn_t *rr);
@@ -370,9 +373,61 @@ static void classic_mod_exp(bn_t *a, bn_t *b, bn_t *c, uint32_t cdigits, bn_t *n
     memset((uint8_t *)base, 0, sizeof(base));
 }
 
+#define DEFINE_MONTGOMERY_MUL_FIXED(name, fixed_digits)                                      \
+static void name(bn_t *a, bn_t *b, bn_t *c, bn_t *n, bn_t n0inv)                             \
+{                                                                                             \
+    bn_t t[(fixed_digits)+1], m;                                                              \
+    dbn_t acc, carry;                                                                         \
+    uint32_t i, j;                                                                            \
+                                                                                              \
+    memset((uint8_t *)t, 0, sizeof(t));                                                       \
+    for(i=0; i<(fixed_digits); i++) {                                                         \
+        bn_t bi = b[i];                                                                       \
+                                                                                              \
+        acc = (dbn_t)bi * c[0] + t[0];                                                       \
+        carry = acc >> BN_DIGIT_BITS;                                                        \
+        m = (bn_t)acc * n0inv;                                                                \
+        acc = (dbn_t)m * n[0] + (bn_t)acc;                                                    \
+        carry += acc >> BN_DIGIT_BITS;                                                       \
+                                                                                              \
+        for(j=1; j<(fixed_digits); j++) {                                                     \
+            acc = (dbn_t)bi * c[j] + t[j] + carry;                                            \
+            carry = acc >> BN_DIGIT_BITS;                                                    \
+            acc = (dbn_t)m * n[j] + (bn_t)acc;                                                \
+            t[j-1] = (bn_t)acc;                                                               \
+            carry += acc >> BN_DIGIT_BITS;                                                   \
+        }                                                                                     \
+                                                                                              \
+        acc = (dbn_t)t[(fixed_digits)] + carry;                                               \
+        t[(fixed_digits)-1] = (bn_t)acc;                                                      \
+        t[(fixed_digits)] = (bn_t)(acc >> BN_DIGIT_BITS);                                    \
+    }                                                                                         \
+                                                                                              \
+    bn_assign(a, t, (fixed_digits));                                                          \
+    if(t[(fixed_digits)] || bn_cmp(a, n, (fixed_digits)) >= 0) {                              \
+        bn_sub(a, a, n, (fixed_digits));                                                      \
+    }                                                                                         \
+                                                                                              \
+    memset((uint8_t *)t, 0, sizeof(t));                                                       \
+}
+
+DEFINE_MONTGOMERY_MUL_FIXED(montgomery_mul_64, 64)
+DEFINE_MONTGOMERY_MUL_FIXED(montgomery_mul_128, 128)
+
 static void montgomery_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, bn_t n0inv)
 {
-    bn_t t[BN_MAX_DIGITS+1], m, borrow;
+    if(digits == 64) {
+        montgomery_mul_64(a, b, c, n, n0inv);
+    } else if(digits == 128) {
+        montgomery_mul_128(a, b, c, n, n0inv);
+    } else {
+        montgomery_mul_var(a, b, c, n, digits, n0inv);
+    }
+}
+
+static void montgomery_mul_var(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, bn_t n0inv)
+{
+    bn_t t[BN_MAX_DIGITS+1], m;
     dbn_t acc, carry;
     uint32_t i, j;
 
@@ -380,17 +435,18 @@ static void montgomery_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, 
     for(i=0; i<digits; i++) {
         bn_t bi = b[i];
 
-        m = (bn_t)(((dbn_t)t[0] + (dbn_t)b[i] * c[0]) * n0inv);
-        carry = 0;
+        acc = (dbn_t)bi * c[0] + t[0];
+        carry = acc >> BN_DIGIT_BITS;
+        m = (bn_t)acc * n0inv;
+        acc = (dbn_t)m * n[0] + (bn_t)acc;
+        carry += acc >> BN_DIGIT_BITS;
 
-        for(j=0; j<digits; j++) {
+        for(j=1; j<digits; j++) {
             acc = (dbn_t)bi * c[j] + t[j] + carry;
             carry = acc >> BN_DIGIT_BITS;
             acc = (dbn_t)m * n[j] + (bn_t)acc;
+            t[j-1] = (bn_t)acc;
             carry += acc >> BN_DIGIT_BITS;
-            if(j > 0) {
-                t[j-1] = (bn_t)acc;
-            }
         }
 
         acc = (dbn_t)t[digits] + carry;
@@ -400,8 +456,7 @@ static void montgomery_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, 
 
     bn_assign(a, t, digits);
     if(t[digits] || bn_cmp(a, n, digits) >= 0) {
-        borrow = bn_sub(a, a, n, digits);
-        (void)borrow;
+        bn_sub(a, a, n, digits);
     }
 
     // Clear potentially sensitive information
