@@ -5,8 +5,8 @@ CC     = gcc
 CFLAGS = -Wall -Wextra -I.
 THREADFLAGS = -pthread
 
-MUL    ?= karatsuba
-MODMUL ?= base
+MUL    ?= base_mt
+MODMUL ?= montgomery_mt
 RSA    ?= mont_crt
 
 MUL_IMPLS    = base base_mt karatsuba karatsuba_mt

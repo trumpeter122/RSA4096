@@ -16,7 +16,7 @@ typedef struct {
 
 typedef struct {
     rsa_pk_t *pk;
-    bn_t n[BN_MAX_DIGITS], e[BN_MAX_DIGITS], r[BN_MAX_DIGITS], rr[BN_MAX_DIGITS];
+    bn_t n[BN_MAX_DIGITS], e[BN_MAX_DIGITS], r[BN_MAX_DIGITS], rr[BN_MAX_DIGITS], one[BN_MAX_DIGITS];
     bn_t n0inv;
     uint32_t ndigits, edigits;
 } mont_public_cache_t;
@@ -34,6 +34,8 @@ static void montgomery_mod_exp_binary(bn_t *a, bn_t *base_m, bn_t *c, uint32_t c
                                       bn_t *n, uint32_t ndigits, bn_t n0inv);
 static void montgomery_mod_exp_window(bn_t *a, bn_t *base_m, bn_t *c, uint32_t cdigits,
                                       bn_t *n, uint32_t ndigits, bn_t n0inv, bn_t *r);
+static void montgomery_mod_exp_65537(bn_t *a, bn_t *b, bn_t *n, uint32_t ndigits,
+                                     bn_t n0inv, bn_t *rr, bn_t *one);
 static void classic_mod_exp(bn_t *a, bn_t *b, bn_t *c, uint32_t cdigits, bn_t *n, uint32_t ndigits);
 static mont_private_cache_t *get_private_cache(rsa_sk_t *sk);
 static mont_public_cache_t *get_public_cache(rsa_pk_t *pk);
@@ -113,8 +115,13 @@ int rsa_public_compute(bn_t *out, bn_t *in, rsa_pk_t *pk, bn_t *n, uint32_t ndig
     (void)ndigits;
 
     cache = get_public_cache(pk);
-    montgomery_mod_exp_precomp(out, in, cache->e, cache->edigits, cache->n, cache->ndigits,
-                               cache->n0inv, cache->r, cache->rr);
+    if(cache->edigits == 1 && cache->e[0] == 65537) {
+        montgomery_mod_exp_65537(out, in, cache->n, cache->ndigits,
+                                 cache->n0inv, cache->rr, cache->one);
+    } else {
+        montgomery_mod_exp_precomp(out, in, cache->e, cache->edigits, cache->n, cache->ndigits,
+                                   cache->n0inv, cache->r, cache->rr);
+    }
 
     return 0;
 }
@@ -221,6 +228,31 @@ static void montgomery_mod_exp_window(bn_t *a, bn_t *base_m, bn_t *c, uint32_t c
     memset((uint8_t *)result, 0, sizeof(result));
 }
 
+static void montgomery_mod_exp_65537(bn_t *a, bn_t *b, bn_t *n, uint32_t ndigits,
+                                     bn_t n0inv, bn_t *rr, bn_t *one)
+{
+    bn_t base[BN_MAX_DIGITS], base_m[BN_MAX_DIGITS], result[BN_MAX_DIGITS];
+
+    if(bn_cmp(b, n, ndigits) >= 0) {
+        bn_mod(base, b, ndigits, n, ndigits);
+    } else {
+        bn_assign(base, b, ndigits);
+    }
+
+    montgomery_mul(base_m, base, rr, n, ndigits, n0inv);
+    bn_assign(result, base_m, ndigits);
+    for(uint32_t i=0; i<16; i++) {
+        montgomery_mul(result, result, result, n, ndigits, n0inv);
+    }
+    montgomery_mul(result, result, base_m, n, ndigits, n0inv);
+    montgomery_mul(a, result, one, n, ndigits, n0inv);
+
+    // Clear potentially sensitive information
+    memset((uint8_t *)base, 0, sizeof(base));
+    memset((uint8_t *)base_m, 0, sizeof(base_m));
+    memset((uint8_t *)result, 0, sizeof(result));
+}
+
 static void montgomery_mod_mul_precomp(bn_t *a, bn_t *b, bn_t *c, bn_t *n,
                                        uint32_t digits, bn_t n0inv, bn_t *rr)
 {
@@ -300,6 +332,7 @@ static mont_public_cache_t *get_public_cache(rsa_pk_t *pk)
     cache.edigits = bn_digits(cache.e, BN_MAX_DIGITS);
     cache.n0inv = montgomery_n0inv(cache.n[0]);
     montgomery_precompute_constants(cache.r, cache.rr, cache.n, cache.ndigits);
+    BN_ASSIGN_DIGIT(cache.one, 1, cache.ndigits);
 
     return &cache;
 }
@@ -340,24 +373,27 @@ static void classic_mod_exp(bn_t *a, bn_t *b, bn_t *c, uint32_t cdigits, bn_t *n
 static void montgomery_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, bn_t n0inv)
 {
     bn_t t[BN_MAX_DIGITS+1], m, borrow;
-    unsigned __int128 acc, carry;
+    dbn_t acc, carry;
     uint32_t i, j;
 
     bn_assign_zero(t, digits + 1);
     for(i=0; i<digits; i++) {
+        bn_t bi = b[i];
+
         m = (bn_t)(((dbn_t)t[0] + (dbn_t)b[i] * c[0]) * n0inv);
         carry = 0;
 
         for(j=0; j<digits; j++) {
-            acc = (unsigned __int128)t[j] + (unsigned __int128)b[i] * c[j] +
-                  (unsigned __int128)m * n[j] + carry;
+            acc = (dbn_t)bi * c[j] + t[j] + carry;
+            carry = acc >> BN_DIGIT_BITS;
+            acc = (dbn_t)m * n[j] + (bn_t)acc;
+            carry += acc >> BN_DIGIT_BITS;
             if(j > 0) {
                 t[j-1] = (bn_t)acc;
             }
-            carry = acc >> BN_DIGIT_BITS;
         }
 
-        acc = (unsigned __int128)t[digits] + carry;
+        acc = (dbn_t)t[digits] + carry;
         t[digits-1] = (bn_t)acc;
         t[digits] = (bn_t)(acc >> BN_DIGIT_BITS);
     }
