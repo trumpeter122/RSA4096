@@ -52,7 +52,7 @@ make
 The default optimized combination is the one with the best performance:
 
 ```text
-MUL=base_mt MODMUL=montgomery_mt RSA=mont_crt
+MUL=base MODMUL=montgomery RSA=mont_crt
 ```
 
 Build the original/base combination:
@@ -66,7 +66,7 @@ Build with a specific combination:
 
 ```sh
 make clean
-make MUL=karatsuba_mt MODMUL=montgomery_mt RSA=crt_mt
+make MUL=karatsuba MODMUL=montgomery RSA=crt
 ```
 
 Debug build:
@@ -88,22 +88,21 @@ Run the release binary:
 `MUL` choices:
 
 - `base`
-- `base_mt`
 - `karatsuba`
-- `karatsuba_mt`
+- `toom_cook`
+- `ntt`
 
 `MODMUL` choices:
 
 - `base`
 - `montgomery`
-- `montgomery_mt`
+- `barrett`
 
 `RSA` choices:
 
 - `base`
 - `square_multiply`
 - `crt`
-- `crt_mt`
 - `mont_crt`
 
 ## Scripts
