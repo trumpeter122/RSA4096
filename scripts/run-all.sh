@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
-MUL_IMPLS="base base_mt karatsuba karatsuba_mt toom_cook ntt"
-MODMUL_IMPLS="base montgomery montgomery_mt barrett"
-RSA_IMPLS="base square_multiply crt crt_mt mont_crt"
+MUL_IMPLS="base karatsuba toom_cook ntt"
+MODMUL_IMPLS="base montgomery barrett"
+RSA_IMPLS="base square_multiply crt mont_crt"
 
 mkdir -p out
 
