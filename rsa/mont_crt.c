@@ -16,7 +16,7 @@ typedef struct {
 
 typedef struct {
     rsa_pk_t *pk;
-    bn_t n[BN_MAX_DIGITS], e[BN_MAX_DIGITS], r[BN_MAX_DIGITS], rr[BN_MAX_DIGITS];
+    bn_t n[BN_MAX_DIGITS], e[BN_MAX_DIGITS], r[BN_MAX_DIGITS], rr[BN_MAX_DIGITS], one[BN_MAX_DIGITS];
     bn_t n0inv;
     uint32_t ndigits, edigits;
 } mont_public_cache_t;
@@ -25,13 +25,9 @@ static bn_t montgomery_n0inv(bn_t n0);
 static uint32_t exponent_bit(bn_t *a, uint32_t bit);
 static uint32_t highest_bit_index(bn_t *a, uint32_t digits);
 static void montgomery_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, bn_t n0inv);
-static void montgomery_from_mont(bn_t *a, bn_t *b, bn_t *n, uint32_t digits, bn_t n0inv);
 static void montgomery_mul_64(bn_t *a, bn_t *b, bn_t *c, bn_t *n, bn_t n0inv);
 static void montgomery_mul_128(bn_t *a, bn_t *b, bn_t *c, bn_t *n, bn_t n0inv);
 static void montgomery_mul_var(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, bn_t n0inv);
-static void montgomery_from_mont_64(bn_t *a, bn_t *b, bn_t *n, bn_t n0inv);
-static void montgomery_from_mont_128(bn_t *a, bn_t *b, bn_t *n, bn_t n0inv);
-static void montgomery_from_mont_var(bn_t *a, bn_t *b, bn_t *n, uint32_t digits, bn_t n0inv);
 static void montgomery_precompute_constants(bn_t *r, bn_t *rr, bn_t *n, uint32_t digits);
 static void montgomery_mod_mul_precomp(bn_t *a, bn_t *b, bn_t *c, bn_t *n,
                                        uint32_t digits, bn_t n0inv, bn_t *rr);
@@ -42,7 +38,7 @@ static void montgomery_mod_exp_binary(bn_t *a, bn_t *base_m, bn_t *c, uint32_t c
 static void montgomery_mod_exp_window(bn_t *a, bn_t *base_m, bn_t *c, uint32_t cdigits,
                                       bn_t *n, uint32_t ndigits, bn_t n0inv, bn_t *r);
 static void montgomery_mod_exp_65537(bn_t *a, bn_t *b, bn_t *n, uint32_t ndigits,
-                                     bn_t n0inv, bn_t *rr);
+                                     bn_t n0inv, bn_t *rr, bn_t *one);
 static void classic_mod_exp(bn_t *a, bn_t *b, bn_t *c, uint32_t cdigits, bn_t *n, uint32_t ndigits);
 static mont_private_cache_t *get_private_cache(rsa_sk_t *sk);
 static mont_public_cache_t *get_public_cache(rsa_pk_t *pk);
@@ -124,7 +120,7 @@ int rsa_public_compute(bn_t *out, bn_t *in, rsa_pk_t *pk, bn_t *n, uint32_t ndig
     cache = get_public_cache(pk);
     if(cache->edigits == 1 && cache->e[0] == 65537) {
         montgomery_mod_exp_65537(out, in, cache->n, cache->ndigits,
-                                 cache->n0inv, cache->rr);
+                                 cache->n0inv, cache->rr, cache->one);
     } else {
         montgomery_mod_exp_precomp(out, in, cache->e, cache->edigits, cache->n, cache->ndigits,
                                    cache->n0inv, cache->r, cache->rr);
@@ -136,7 +132,7 @@ int rsa_public_compute(bn_t *out, bn_t *in, rsa_pk_t *pk, bn_t *n, uint32_t ndig
 static void montgomery_mod_exp_precomp(bn_t *a, bn_t *b, bn_t *c, uint32_t cdigits,
                                        bn_t *n, uint32_t ndigits, bn_t n0inv, bn_t *r, bn_t *rr)
 {
-    bn_t base[BN_MAX_DIGITS], base_m[BN_MAX_DIGITS];
+    bn_t base[BN_MAX_DIGITS], base_m[BN_MAX_DIGITS], one[BN_MAX_DIGITS];
     uint32_t bits;
 
     cdigits = bn_digits(c, cdigits);
@@ -159,11 +155,13 @@ static void montgomery_mod_exp_precomp(bn_t *a, bn_t *b, bn_t *c, uint32_t cdigi
         montgomery_mod_exp_binary(a, base_m, c, cdigits, n, ndigits, n0inv);
     }
 
-    montgomery_from_mont(a, a, n, ndigits, n0inv);
+    BN_ASSIGN_DIGIT(one, 1, ndigits);
+    montgomery_mul(a, a, one, n, ndigits, n0inv);
 
     // Clear potentially sensitive information
     memset((uint8_t *)base, 0, sizeof(base));
     memset((uint8_t *)base_m, 0, sizeof(base_m));
+    memset((uint8_t *)one, 0, sizeof(one));
 }
 
 static void montgomery_mod_exp_binary(bn_t *a, bn_t *base_m, bn_t *c, uint32_t cdigits,
@@ -234,7 +232,7 @@ static void montgomery_mod_exp_window(bn_t *a, bn_t *base_m, bn_t *c, uint32_t c
 }
 
 static void montgomery_mod_exp_65537(bn_t *a, bn_t *b, bn_t *n, uint32_t ndigits,
-                                     bn_t n0inv, bn_t *rr)
+                                     bn_t n0inv, bn_t *rr, bn_t *one)
 {
     bn_t base[BN_MAX_DIGITS], base_m[BN_MAX_DIGITS], result[BN_MAX_DIGITS];
 
@@ -250,7 +248,7 @@ static void montgomery_mod_exp_65537(bn_t *a, bn_t *b, bn_t *n, uint32_t ndigits
         montgomery_mul(result, result, result, n, ndigits, n0inv);
     }
     montgomery_mul(result, result, base_m, n, ndigits, n0inv);
-    montgomery_from_mont(a, result, n, ndigits, n0inv);
+    montgomery_mul(a, result, one, n, ndigits, n0inv);
 
     // Clear potentially sensitive information
     memset((uint8_t *)base, 0, sizeof(base));
@@ -261,17 +259,19 @@ static void montgomery_mod_exp_65537(bn_t *a, bn_t *b, bn_t *n, uint32_t ndigits
 static void montgomery_mod_mul_precomp(bn_t *a, bn_t *b, bn_t *c, bn_t *n,
                                        uint32_t digits, bn_t n0inv, bn_t *rr)
 {
-    bn_t bm[BN_MAX_DIGITS], cm[BN_MAX_DIGITS], tm[BN_MAX_DIGITS];
+    bn_t bm[BN_MAX_DIGITS], cm[BN_MAX_DIGITS], tm[BN_MAX_DIGITS], one[BN_MAX_DIGITS];
 
     montgomery_mul(bm, b, rr, n, digits, n0inv);
     montgomery_mul(cm, c, rr, n, digits, n0inv);
     montgomery_mul(tm, bm, cm, n, digits, n0inv);
-    montgomery_from_mont(a, tm, n, digits, n0inv);
+    BN_ASSIGN_DIGIT(one, 1, digits);
+    montgomery_mul(a, tm, one, n, digits, n0inv);
 
     // Clear potentially sensitive information
     memset((uint8_t *)bm, 0, sizeof(bm));
     memset((uint8_t *)cm, 0, sizeof(cm));
     memset((uint8_t *)tm, 0, sizeof(tm));
+    memset((uint8_t *)one, 0, sizeof(one));
 }
 
 static void montgomery_precompute_constants(bn_t *r, bn_t *rr, bn_t *n, uint32_t digits)
@@ -335,6 +335,7 @@ static mont_public_cache_t *get_public_cache(rsa_pk_t *pk)
     cache.edigits = bn_digits(cache.e, BN_MAX_DIGITS);
     cache.n0inv = montgomery_n0inv(cache.n[0]);
     montgomery_precompute_constants(cache.r, cache.rr, cache.n, cache.ndigits);
+    BN_ASSIGN_DIGIT(cache.one, 1, cache.ndigits);
 
     return &cache;
 }
@@ -413,44 +414,6 @@ static void name(bn_t *a, bn_t *b, bn_t *c, bn_t *n, bn_t n0inv)                
 DEFINE_MONTGOMERY_MUL_FIXED(montgomery_mul_64, 64)
 DEFINE_MONTGOMERY_MUL_FIXED(montgomery_mul_128, 128)
 
-#define DEFINE_MONTGOMERY_FROM_MONT_FIXED(name, fixed_digits)                                \
-static void name(bn_t *a, bn_t *b, bn_t *n, bn_t n0inv)                                      \
-{                                                                                             \
-    bn_t t[2*(fixed_digits)+1], m;                                                           \
-    dbn_t acc, carry;                                                                         \
-    uint32_t i, j, k;                                                                         \
-                                                                                              \
-    memset((uint8_t *)t, 0, sizeof(t));                                                       \
-    bn_assign(t, b, (fixed_digits));                                                          \
-                                                                                              \
-    for(i=0; i<(fixed_digits); i++) {                                                         \
-        m = t[i] * n0inv;                                                                     \
-        carry = 0;                                                                            \
-        for(j=0; j<(fixed_digits); j++) {                                                     \
-            acc = (dbn_t)t[i+j] + (dbn_t)m * n[j] + carry;                                    \
-            t[i+j] = (bn_t)acc;                                                               \
-            carry = acc >> BN_DIGIT_BITS;                                                     \
-        }                                                                                     \
-        k = i + (fixed_digits);                                                               \
-        while(carry != 0) {                                                                   \
-            acc = (dbn_t)t[k] + carry;                                                        \
-            t[k] = (bn_t)acc;                                                                 \
-            carry = acc >> BN_DIGIT_BITS;                                                     \
-            k++;                                                                              \
-        }                                                                                     \
-    }                                                                                         \
-                                                                                              \
-    bn_assign(a, &t[(fixed_digits)], (fixed_digits));                                         \
-    if(t[2*(fixed_digits)] || bn_cmp(a, n, (fixed_digits)) >= 0) {                            \
-        bn_sub(a, a, n, (fixed_digits));                                                      \
-    }                                                                                         \
-                                                                                              \
-    memset((uint8_t *)t, 0, sizeof(t));                                                       \
-}
-
-DEFINE_MONTGOMERY_FROM_MONT_FIXED(montgomery_from_mont_64, 64)
-DEFINE_MONTGOMERY_FROM_MONT_FIXED(montgomery_from_mont_128, 128)
-
 static void montgomery_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, bn_t n0inv)
 {
     if(digits == 64) {
@@ -459,17 +422,6 @@ static void montgomery_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, 
         montgomery_mul_128(a, b, c, n, n0inv);
     } else {
         montgomery_mul_var(a, b, c, n, digits, n0inv);
-    }
-}
-
-static void montgomery_from_mont(bn_t *a, bn_t *b, bn_t *n, uint32_t digits, bn_t n0inv)
-{
-    if(digits == 64) {
-        montgomery_from_mont_64(a, b, n, n0inv);
-    } else if(digits == 128) {
-        montgomery_from_mont_128(a, b, n, n0inv);
-    } else {
-        montgomery_from_mont_var(a, b, n, digits, n0inv);
     }
 }
 
@@ -504,41 +456,6 @@ static void montgomery_mul_var(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digi
 
     bn_assign(a, t, digits);
     if(t[digits] || bn_cmp(a, n, digits) >= 0) {
-        bn_sub(a, a, n, digits);
-    }
-
-    // Clear potentially sensitive information
-    memset((uint8_t *)t, 0, sizeof(t));
-}
-
-static void montgomery_from_mont_var(bn_t *a, bn_t *b, bn_t *n, uint32_t digits, bn_t n0inv)
-{
-    bn_t t[2*BN_MAX_DIGITS+1], m;
-    dbn_t acc, carry;
-    uint32_t i, j, k;
-
-    bn_assign_zero(t, 2*digits + 1);
-    bn_assign(t, b, digits);
-
-    for(i=0; i<digits; i++) {
-        m = t[i] * n0inv;
-        carry = 0;
-        for(j=0; j<digits; j++) {
-            acc = (dbn_t)t[i+j] + (dbn_t)m * n[j] + carry;
-            t[i+j] = (bn_t)acc;
-            carry = acc >> BN_DIGIT_BITS;
-        }
-        k = i + digits;
-        while(carry != 0) {
-            acc = (dbn_t)t[k] + carry;
-            t[k] = (bn_t)acc;
-            carry = acc >> BN_DIGIT_BITS;
-            k++;
-        }
-    }
-
-    bn_assign(a, &t[digits], digits);
-    if(t[2*digits] || bn_cmp(a, n, digits) >= 0) {
         bn_sub(a, a, n, digits);
     }
 
