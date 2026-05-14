@@ -44,6 +44,9 @@ MODMUL_IMPLS=$(echo "$MODMUL_IMPLS" | tr ' ' '\n' | shuf)
 MUL_IMPLS=$(echo "$MUL_IMPLS" | tr ' ' '\n' | shuf)
 RSA_IMPLS=$(echo "$RSA_IMPLS" | tr ' ' '\n' | shuf)
 
+total_rounds=$(($(echo "$MUL_IMPLS" | wc -l) * $(echo "$MODMUL_IMPLS" | wc -l) * $(echo "$RSA_IMPLS" | wc -l)))
+current_round=0
+
 for mul in $MUL_IMPLS; do
   for modmul in $MODMUL_IMPLS; do
     for rsa in $RSA_IMPLS; do
@@ -51,12 +54,14 @@ for mul in $MUL_IMPLS; do
       log="out/${name}.log"
       prof="out/${name}.prof"
 
+      current_round=$((current_round + 1))
+
       if [ -f "$log" ] && [ -f "$prof" ]; then
-        echo "==> $name exists, skipping"
+        echo "==> $current_round/$total_rounds: $name exists, skipping"
         continue
       fi
 
-      echo "==> $name"
+      echo "==> $current_round/$total_rounds: $name"
 
       make clean >/dev/null
       make MUL="$mul" MODMUL="$modmul" RSA="$rsa" >/dev/null
