@@ -53,12 +53,14 @@ run_one() {
 
   current_round=$((current_round + 1))
 
+  echo "==> $current_round/$total_rounds | Current record: ${FASTEST_RUN_SECONDS}s"
+
   if [ -f "$log" ] && [ -f "$prof" ]; then
-    echo "==> $current_round/$total_rounds: $name exists, skipping"
+    echo "$name exists, skipping"
     return
   fi
 
-  echo "==> $current_round/$total_rounds: $name"
+  echo "$name running"
 
   make clean >/dev/null
   make MUL="$mul" MODMUL="$modmul" RSA="$rsa" >/dev/null
