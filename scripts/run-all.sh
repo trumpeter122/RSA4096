@@ -8,6 +8,10 @@ MUL_IMPLS="base karatsuba toom_cook ntt"
 MODMUL_IMPLS="base montgomery barrett"
 RSA_IMPLS="base square_multiply crt mont_crt"
 
+MUL_IMPLS=$(echo "$MUL_IMPLS" | tr ' ' '\n' | shuf)
+MODMUL_IMPLS=$(echo "$MODMUL_IMPLS" | tr ' ' '\n' | shuf)
+RSA_IMPLS=$(echo "$RSA_IMPLS" | tr ' ' '\n' | shuf)
+
 run_benchmark() {
   log="$1"
   prof="$2"
@@ -38,38 +42,46 @@ run_benchmark() {
   rm -f gmon.out
 }
 
-mkdir -p out
+run_one() {
+  mul="$1"
+  modmul="$2"
+  rsa="$3"
 
-MODMUL_IMPLS=$(echo "$MODMUL_IMPLS" | tr ' ' '\n' | shuf)
-MUL_IMPLS=$(echo "$MUL_IMPLS" | tr ' ' '\n' | shuf)
-RSA_IMPLS=$(echo "$RSA_IMPLS" | tr ' ' '\n' | shuf)
+  name="mul-${mul}_modmul-${modmul}_rsa-${rsa}"
+  log="out/${name}.log"
+  prof="out/${name}.prof"
+
+  current_round=$((current_round + 1))
+
+  if [ -f "$log" ] && [ -f "$prof" ]; then
+    echo "==> $current_round/$total_rounds: $name exists, skipping"
+    return
+  fi
+
+  echo "==> $current_round/$total_rounds: $name"
+
+  make clean >/dev/null
+  make MUL="$mul" MODMUL="$modmul" RSA="$rsa" >/dev/null
+
+  make clean >/dev/null
+  make MUL="$mul" MODMUL="$modmul" RSA="$rsa" 'RELCFLAGS=-O3 -DNDEBUG -pg' >/dev/null
+
+  run_benchmark "$log" "$prof"
+}
+
+mkdir -p out
 
 total_rounds=$(($(echo "$MUL_IMPLS" | wc -l) * $(echo "$MODMUL_IMPLS" | wc -l) * $(echo "$RSA_IMPLS" | wc -l)))
 current_round=0
 
+run_one base base base
+
 for mul in $MUL_IMPLS; do
   for modmul in $MODMUL_IMPLS; do
     for rsa in $RSA_IMPLS; do
-      name="mul-${mul}_modmul-${modmul}_rsa-${rsa}"
-      log="out/${name}.log"
-      prof="out/${name}.prof"
-
-      current_round=$((current_round + 1))
-
-      if [ -f "$log" ] && [ -f "$prof" ]; then
-        echo "==> $current_round/$total_rounds: $name exists, skipping"
-        continue
+      if [ "$mul" != "base" ] || [ "$modmul" != "base" ] || [ "$rsa" != "base" ]; then
+        run_one "$mul" "$modmul" "$rsa"
       fi
-
-      echo "==> $current_round/$total_rounds: $name"
-
-      make clean >/dev/null
-      make MUL="$mul" MODMUL="$modmul" RSA="$rsa" >/dev/null
-
-      make clean >/dev/null
-      make MUL="$mul" MODMUL="$modmul" RSA="$rsa" 'RELCFLAGS=-O3 -DNDEBUG -pg' >/dev/null
-
-      run_benchmark "$log" "$prof"
     done
   done
 done
