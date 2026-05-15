@@ -4,12 +4,6 @@
 #include "../mul/mul.h"
 
 #define MONT_CACHE_SIZE 4
-/*
- * This module is called for standalone b*c mod n operations. For RSA4096 the
- * operands are at most 128 digits, so converting into/out of Montgomery form on
- * every call is slower than the base division path on the target profile.
- */
-#define MONT_MIN_DIGITS BN_MAX_DIGITS
 
 typedef struct {
     int valid;
@@ -24,7 +18,6 @@ static uint32_t g_mont_cache_next = 0;
 static pthread_mutex_t g_mont_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static bn_t montgomery_n0inv(bn_t n0);
-static void base_mod_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *d, uint32_t digits);
 static void montgomery_r2(bn_t *r2, bn_t *n, uint32_t digits);
 static void montgomery_get_constants(bn_t *r2, bn_t *n0inv, bn_t *n, uint32_t digits);
 static void montgomery_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *n, uint32_t digits, bn_t n0inv);
@@ -35,11 +28,6 @@ void modmul_bn_mod_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *d, uint32_t digits)
     bn_t bb[BN_MAX_DIGITS], cc[BN_MAX_DIGITS], one[BN_MAX_DIGITS];
     bn_t r2[BN_MAX_DIGITS], bm[BN_MAX_DIGITS], cm[BN_MAX_DIGITS], tm[BN_MAX_DIGITS];
     bn_t n0inv;
-
-    if(digits < MONT_MIN_DIGITS || d[0] == 0 || ((d[0] & 1) == 0)) {
-        base_mod_mul(a, b, c, d, digits);
-        return;
-    }
 
     reduce_operand(bb, b, d, digits);
     reduce_operand(cc, c, d, digits);
@@ -60,17 +48,6 @@ void modmul_bn_mod_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *d, uint32_t digits)
     memset((uint8_t *)bm, 0, sizeof(bm));
     memset((uint8_t *)cm, 0, sizeof(cm));
     memset((uint8_t *)tm, 0, sizeof(tm));
-}
-
-static void base_mod_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *d, uint32_t digits)
-{
-    bn_t t[2*BN_MAX_DIGITS];
-
-    mul_bn_mul(t, b, c, digits);
-    bn_mod(a, t, 2*digits, d, digits);
-
-    // Clear potentially sensitive information
-    memset((uint8_t *)t, 0, sizeof(t));
 }
 
 static void reduce_operand(bn_t *a, bn_t *b, bn_t *n, uint32_t digits)

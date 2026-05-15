@@ -17,10 +17,6 @@ void mul_bn_mul(bn_t *a, bn_t *b, bn_t *c, uint32_t digits)
     uint32_t padded;
 
     padded = next_power_of_two(digits);
-    if(padded > KARATSUBA_MAX_DIGITS) {
-        school_mul(a, b, c, digits);
-        return;
-    }
 
     bn_assign_zero(bb, padded);
     bn_assign_zero(cc, padded);

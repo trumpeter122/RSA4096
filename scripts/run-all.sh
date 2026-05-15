@@ -4,7 +4,7 @@ set -eu
 TIMEOUT_MULTIPLIER=1.5
 FASTEST_RUN_SECONDS=0
 
-MUL_IMPLS="base school karatsuba toom_cook ntt"
+MUL_IMPLS="base school karatsuba ntt"
 MODMUL_IMPLS="base montgomery barrett"
 RSA_IMPLS="base square_multiply crt mont_crt"
 

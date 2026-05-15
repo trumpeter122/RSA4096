@@ -88,8 +88,8 @@ Run the release binary:
 `MUL` choices:
 
 - `base`
+- `school`
 - `karatsuba`
-- `toom_cook`
 - `ntt`
 
 `MODMUL` choices:

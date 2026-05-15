@@ -18,30 +18,13 @@ static pthread_mutex_t g_barrett_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void barrett_get_mu(bn_t *mu, bn_t *n, uint32_t digits);
 static void barrett_reduce(bn_t *a, bn_t *x, bn_t *n, uint32_t digits);
-static void base_mod_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *d, uint32_t digits);
 
 void modmul_bn_mod_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *d, uint32_t digits)
 {
     bn_t t[2*BN_MAX_DIGITS];
 
-    if(digits == 0 || d[0] == 0) {
-        base_mod_mul(a, b, c, d, digits);
-        return;
-    }
-
     mul_bn_mul(t, b, c, digits);
     barrett_reduce(a, t, d, digits);
-
-    // Clear potentially sensitive information
-    memset((uint8_t *)t, 0, sizeof(t));
-}
-
-static void base_mod_mul(bn_t *a, bn_t *b, bn_t *c, bn_t *d, uint32_t digits)
-{
-    bn_t t[2*BN_MAX_DIGITS];
-
-    mul_bn_mul(t, b, c, digits);
-    bn_mod(a, t, 2*digits, d, digits);
 
     // Clear potentially sensitive information
     memset((uint8_t *)t, 0, sizeof(t));

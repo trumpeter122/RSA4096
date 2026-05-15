@@ -8,7 +8,7 @@ MUL    ?= base
 MODMUL ?= montgomery
 RSA    ?= mont_crt
 
-MUL_IMPLS    = base karatsuba toom_cook ntt
+MUL_IMPLS    = base school karatsuba ntt
 MODMUL_IMPLS = base montgomery barrett
 RSA_IMPLS    = base square_multiply crt mont_crt
 

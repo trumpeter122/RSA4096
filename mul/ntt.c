@@ -1,7 +1,6 @@
 #include <string.h>
 #include "mul.h"
 
-#define NTT_MIN_DIGITS 96
 #define NTT_MAX_LEN 512
 #define NTT_PRIMES 3
 
@@ -10,7 +9,6 @@ typedef __uint128_t u128_t;
 static const uint32_t ntt_mods[NTT_PRIMES] = {998244353U, 1004535809U, 469762049U};
 static const uint32_t ntt_roots[NTT_PRIMES] = {3U, 3U, 3U};
 
-static void school_mul(bn_t *a, bn_t *b, bn_t *c, uint32_t digits);
 static uint32_t mod_pow(uint32_t a, uint32_t e, uint32_t mod);
 static uint32_t mod_inv(uint32_t a, uint32_t mod);
 static void ntt(uint32_t *a, uint32_t n, int invert, uint32_t mod, uint32_t root);
@@ -22,16 +20,7 @@ void mul_bn_mul(bn_t *a, bn_t *b, bn_t *c, uint32_t digits)
     uint32_t len;
     uint32_t residues[NTT_PRIMES][2*BN_MAX_DIGITS];
 
-    if(digits < NTT_MIN_DIGITS) {
-        school_mul(a, b, c, digits);
-        return;
-    }
-
     len = next_power_of_two(2 * digits);
-    if(len > NTT_MAX_LEN) {
-        school_mul(a, b, c, digits);
-        return;
-    }
 
     for(uint32_t p=0; p<NTT_PRIMES; p++) {
         uint32_t fa[NTT_MAX_LEN], fb[NTT_MAX_LEN];
@@ -163,27 +152,4 @@ static uint32_t next_power_of_two(uint32_t n)
         value <<= 1;
     }
     return value;
-}
-
-static void school_mul(bn_t *a, bn_t *b, bn_t *c, uint32_t digits)
-{
-    dbn_t uv;
-    uint32_t i, j, k;
-
-    bn_assign_zero(a, 2*digits);
-    for(i=0; i<digits; i++) {
-        bn_t carry = 0;
-        for(j=0; j<digits; j++) {
-            uv = (dbn_t)a[i+j] + (dbn_t)b[i] * c[j] + carry;
-            a[i+j] = (bn_t)uv;
-            carry = (bn_t)(uv >> BN_DIGIT_BITS);
-        }
-        k = i + digits;
-        while(carry != 0) {
-            uv = (dbn_t)a[k] + carry;
-            a[k] = (bn_t)uv;
-            carry = (bn_t)(uv >> BN_DIGIT_BITS);
-            k++;
-        }
-    }
 }
