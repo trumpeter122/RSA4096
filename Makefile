@@ -4,8 +4,8 @@
 CC     = gcc
 CFLAGS = -Wall -Wextra -I.
 
-MUL    ?= base_mt
-MODMUL ?= montgomery_mt
+MUL    ?= base
+MODMUL ?= montgomery
 RSA    ?= mont_crt
 
 MUL_IMPLS    = base karatsuba toom_cook ntt
