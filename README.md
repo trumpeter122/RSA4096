@@ -5,6 +5,14 @@ keeps the original top-level RSA interface while allowing multiplication,
 modular multiplication, and RSA computation strategies to be selected at build
 time.
 
+## Branches
+
+- `main`: experimental branch with modular implementations, benchmark scripts,
+  and selectable `mul`, `modmul`, and `rsa` combinations.
+- `release`: final submission branch based on the original structure, keeping
+  only the selected Karatsuba + Montgomery CRT optimization without extra
+  experiment modules.
+
 ## Project Structure
 
 ```text
