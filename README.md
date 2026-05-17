@@ -1,15 +1,139 @@
-
 # RSA4096
-Achieve RSA4096 with C language
 
-1. 实现了RSA4096的加密解密过程，公钥加密与私钥解密合并, 去除公钥解密, 私钥加密功能, 仅保留公钥加密/私钥解密. 
+RSA4096 implementation in C with a modular optimization structure. The project
+keeps the original top-level RSA interface while allowing multiplication,
+modular multiplication, and RSA computation strategies to be selected at build
+time.
 
-2. 增加对任意数据的RSA加解密支持, 直接使用makefile. 测试testbench, 效率与验证正确性.
-# To debug:
-make clean && make debug
+## Branches
 
+- `main`: experimental branch with modular implementations, benchmark scripts,
+  and selectable `mul`, `modmul`, and `rsa` combinations.
+- `release`: final submission branch based on the original structure, keeping
+  only the selected Karatsuba + Montgomery CRT optimization without extra
+  experiment modules.
+
+## Project Structure
+
+```text
+.
+├── main.c                  # Test / benchmark entry point
+├── keys.h                  # RSA test keys
+├── rsa.h, rsa.c            # Public RSA API, padding, block handling
+├── bignum.h, bignum.c      # Big number helpers and module dispatch
+├── Makefile                # Build configuration and module selection
+├── mul/                    # Multiplication implementations
+│   ├── base.c
+│   ├── ...
+│   └── mul.h
+├── modmul/                 # Modular multiplication implementations
+│   ├── base.c
+│   ├── ...
+│   └── modmul.h
+├── rsa/                    # RSA computation implementations
+│   ├── base.c
+│   ├── ...
+│   └── compute.h
+└── scripts/                # Benchmark and analysis helpers
+    ├── run-all.sh
+    └── analyze.py
+```
+
+The modular boundaries are:
+
+- `mul`: implements `mul_bn_mul`, used by `bn_mul`.
+- `modmul`: implements `modmul_bn_mod_mul`, used by `bn_mod_mul`.
+- `rsa`: implements modular exponentiation and RSA private/public compute
+  routines declared in `rsa/compute.h`.
+
+Each module has a `base` implementation for the original behavior plus
+optimized variants. `main.c` and `keys.h` are intentionally left unchanged.
+
+## Build
+
+Default release build:
+
+```sh
+make
+```
+
+The default optimized combination is the one with the best performance:
+
+```text
+MUL=base MODMUL=montgomery RSA=mont_crt
+```
+
+Build the original/base combination:
+
+```sh
+make clean
+make MUL=base MODMUL=base RSA=base
+```
+
+Build with a specific combination:
+
+```sh
+make clean
+make MUL=karatsuba MODMUL=montgomery RSA=crt
+```
+
+Debug build:
+
+```sh
+make clean
+make debug
 gdb ./debug/main
-# To release:
-make clean && make all/release
+```
 
-./release/main >out.log 2>&1
+Run the release binary:
+
+```sh
+./release/main > out.log 2>&1
+```
+
+## Available Implementations
+
+`MUL` choices:
+
+- `base`
+- `school`
+- `karatsuba`
+- `ntt`
+
+`MODMUL` choices:
+
+- `base`
+- `montgomery`
+- `barrett`
+
+`RSA` choices:
+
+- `base`
+- `square_multiply`
+- `crt`
+- `mont_crt`
+
+## Scripts
+
+Run all module combinations and collect logs/profiles under `out/`:
+
+```sh
+scripts/run-all.sh
+```
+
+Analyze the generated results:
+
+```sh
+scripts/analyze.py out
+```
+
+Optionally write CSV output:
+
+```sh
+scripts/analyze.py out --csv results.csv
+```
+
+## Notes
+
+- The all-base build is intended to match the original implementation.
+- Optimizations are isolated inside `mul/`, `modmul/`, and `rsa/`.
